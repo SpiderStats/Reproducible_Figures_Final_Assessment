@@ -1,0 +1,345 @@
+---
+title: "FINAL_ASSESSMENT_reproducible_figures"
+output: html_document
+date: "2024-12-12"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+---
+title: "Reproducible_figures_assessment_final"
+output:
+  pdf_document: default
+  html_document: default
+date: "2024-12-12"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Key packages
+
+The following packages should first be installed if not already. The install.packages("package name") function can be used for this or rather accessed via "Install" within the Packages tab of the viewer panel. These packages can then be accessed with library() function:
+
+```{r}
+
+#install required packages
+
+library(ggplot2)
+library(palmerpenguins)
+library(dplyr)
+library(janitor)
+library(here)
+library(car)
+```
+
+## QUESTION 01: Data Visualisation for Science Communication
+
+### a) Figure that badly communicates data from the Palmer Penguins dataset
+
+```{r figure that badly communucates data, echo=FALSE}
+ggplot(penguins_raw, aes(`Culmen Length (mm)`, `Culmen Depth (mm)`)) + 
+  geom_point(size=1) +
+  geom_smooth(method = "lm", se = TRUE, linetype = "solid")+
+labs(
+    title = "Negative correlation trend between Culmen Length and Depth",
+    x = "Culmen Length (mm)",  
+    y = "Culmen Depth (mm)"    
+  )
+```
+
+### Figure 1: Scatter plot poorly communicating relationship between Culmen depth relative to Culmen length
+
+### b) How have my design choices mislead the reader about the underlying data?
+
+I have plotted two continuous variables from the data set which reveals a negative correlation, suggesting that as culmen length increases culmen depth decreases. This trend is illustrated by the bold trend line. However, this is highly misleading and an example of Simpson's Paradox, in which an essential categorical variables has been omitted causing a reverse in the trend between variables (Horst, 2022). For example, the omission of species, an important factor, as shown in the graph above causes a reverse in the trend between culmen depth and length from positively correlated to negatively correlated. If species were to be included (as seen in figure 2, question 2) then the data would appear grouped relative to species and positive correlations between the variables would be observed within these species groups. Thus within species, as culmen depth increases, culmen length increases. Since, one species has a greater culmen depth to length ratio while another has a smaller ratio, when pooled the data reveals a misleading negative trend. The problems of Simpsons Paradox highlight the importance of considering and displaying all variables within the data and thus possible factors. Authors may mislead readers further by highlighting misleading trends using enlarged trend lines and descriptive titles as shown above.
+
+References: Horst, A.M., Hill, A.P. and Gorman, K.B. (2022). The R Journal: Palmer Archipelago Penguins Data in the palmerpenguins R Package - An Alternative to Anderson’s Irises. The R Journal, [online] 14(1), pp.244–254. <doi:https://doi.org/10.32614/RJ-2022-020>.
+
+------------------------------------------------------------------------
+
+## QUESTION 2: Data Pipeline
+
+## Introduction
+
+The Palmer Penguins data set collected body size measurements for 3 species of penguin known to breed across the Palmer Archipelago, Antarctica. The data set provides an opportunity for robust statistical analysis enabled by the large balanced sample sizes. (Horst, 2022)
+
+This analysis aims to carry out a robust and reproducible analysis of the Palmer Penguins data set specifically focusing on the relationship between bill variables (Culmen length (mm), Culmen depth(mm)). The analysis will consider Simpson's Paradox through the use of Analysis of Covariance statistical tests to highlight the importance of the species variable.
+
+## Hypotheses
+
+**Null Hypothesis 1** (group effect) : there is no significant effect of species on culmen depth **Alternative** **Hypothesis 1** (group effect) : there is a significant effect of species on culmen depth
+
+**Null Hypothesis 2** (covariate effect) : there is no significant effect of culmen length on culmen depth **Alternative Hypothesis 2** (covariate effect) : there is a significant effect of culmen length on culmen depth
+
+**Null Hypothesis 3** (interaction effect) : there is no significant interaction between species and culmen length **Alternative Hypothesis 3** (interaction effect) : there is a significant interaction between species and culmen length
+
+## Statistical methods
+
+### 1. Data Loading and cleaning
+
+In order to load and clean the data efficiently we must use a series of functions. Firstly these must be loaded. (All functions sourced from Lydia France, "cleaning.r", 2024):
+
+<https://github.com/LydiaFrance/Reproducible_Figures_R/tree/lessons/PenguinProjectExample/functions>)
+
+```{r}
+# A function to make sure the column names are cleaned up, 
+# eg lower case and snake case
+clean_column_names <- function(penguins_data) {
+    penguins_data %>%
+        clean_names()
+}
+
+# A function to make sure the species names are shortened
+shorten_species <- function(penguins_data) {
+    penguins_data %>%
+        mutate(species = case_when(
+            species == "Adelie Penguin (Pygoscelis adeliae)" ~ "Adelie",
+            species == "Chinstrap penguin (Pygoscelis antarctica)" ~ "Chinstrap",
+            species == "Gentoo penguin (Pygoscelis papua)" ~ "Gentoo"
+        ))
+}
+
+# A function to remove any empty columns or rows
+remove_empty_columns_rows <- function(penguins_data) {
+    penguins_data %>%
+        remove_empty(c("rows", "cols"))
+}
+
+
+# A function to subset the data based on the list of column names
+subset_columns <- function(penguins_data, column_names) {
+    penguins_data %>%
+        select(all_of(column_names))
+}
+
+# A function to subset the penguins data set based on species
+filter_by_species <- function(penguins_data, selected_species) {
+    penguins_data %>%
+        filter(species == selected_species)
+}
+
+# A function to remove rows which contain NA values
+remove_NA <- function(penguins_data) {
+    penguins_data %>%
+        na.omit()
+
+}
+```
+
+#### Loading and saving the data
+
+The data is accessible and can be loaded from palmerpenguins (this package was accessed earlier in the script). To ensure reproducibility and transparency the raw data should be saved as a csv file to the project "Data" file. This "Data" file must first be made and then then the csv file can be saved to it (working in a R project should ensure functionality of the following code). While code is provided to produce the "Data" file this can also be accessed from my GitHub repository (with saved data csv.)
+
+```{r}
+#Create the "Data" file in the project:
+dir.create("Data")
+
+# Save the raw data as a csv file to the "Data" project file:
+write.csv(penguins_raw, here("Data", "penguins_raw.csv"))
+```
+
+#### Cleaning the data
+
+Some problems with the raw data set include the formatting of column names, empty columns and NAs etc. This requires cleaning of the data to produce a consistent and accurate data set that is fit for reproducible analysis. The following pipeline code will not only 'clean' the data but also subset the columns producing a data set with only the columns of interest for this analysis (Culmen length, Culmen depth and Species):
+
+```{r}
+# Clean the data:
+penguins_clean <- penguins_raw %>%
+    clean_column_names() %>%
+    shorten_species() %>%
+    remove_empty_columns_rows() %>%
+    subset_columns(c("culmen_length_mm", "culmen_depth_mm", "species")) %>%
+    remove_NA()
+  
+```
+
+A csv copy of the cleaned data should be produced and saved to the "Data" project file also. This further ensures transparency and reproducibility.
+
+```{r}
+# Save cleaned data csv copy:
+write.csv(penguins_clean, here("Data", "penguins_clean.csv"))
+```
+
+### 2. Exploratory Figure
+
+We will now produce an explorative figure of the cleaned raw data points. Exploratory figures enable the appropriate visualization of the data and identification of an appropriate statistical test. A scatter graph for the two continuous variables is most appropriate. However, data points should be grouped by species through color to highlight Simpson's paradox.
+
+```{r}
+# scatter plot of of raw data 
+ggplot(penguins_clean, aes(culmen_length_mm, culmen_depth_mm, color=species)) + 
+  geom_point(size=1) +
+  labs(
+    title = "Relationship between Culmen Length and Culmen Depth",
+    x = "Culmen Length (mm)",  
+    y = "Culmen Depth (mm)"    
+  )
+```
+
+### Figure 2: Scatter plot of the relationship between Culmen depth relative to Culmen length
+
+We should then save figure 2 to an appropriate project file. To do this we should create a "Figures" project data file:
+
+```{r}
+dir.create("Figures")
+```
+
+Figure 2 should then be saved as a pdf (or svg) file to the the Figures project file. This saves an accessible high resolution copy:
+
+```{r}
+# name the graph 
+my_plot <- ggplot(penguins_clean, aes(culmen_length_mm, culmen_depth_mm, color=species)) + 
+  geom_point(size=2) +
+labs(
+    title = "Relationship between Culmen Length and Culmen Depth",
+    x = "Culmen Length (mm)",  
+    y = "Culmen Depth (mm)"    
+  )
+# save the graph to the appropriate figures file:
+ggsave(here("Figures","my_plot.pdf"), plot = my_plot, width = 8, height = 6)
+```
+
+### 3. Statistical test
+
+We will then use an Analysis of Covariance (ANCOVA) statistical test to consider the relationship between these two continuous variables and categorical variable (the ANCOVA table is available in results, using the summary() function). The number of variables means this statistical test is necessary to determine relationships between variables.
+
+```{r}
+# carry out ancova analysis and name this
+ancova_interaction_model <- aov(culmen_depth_mm ~ species * culmen_length_mm, data = penguins_clean )
+```
+
+To ensure the data fits the assumptions of the model and that this statistical test is appropriate we will also plot the diagnostics (normality etc):
+
+```{r}
+# plot QQ plot of residuals and there relative normality:
+plot(ancova_interaction_model)
+```
+
+### Figure 3: ANCOVA diagnostic plots
+
+There are slight deviations within the residuals from a normal distribution however the large equal sample sizes means that it is still appropriate to use this ANCOVA test.
+
+We can tests if the variances are equal between groups (another assumption of the test) using Levene's test:
+
+```{r}
+# are the variances between groups equal using Levene's test:
+leveneTest(culmen_depth_mm ~ species, data = penguins_clean)
+```
+
+The p value is greater than 0.05 thus we cannot reject the null hypothesis. The variances are equal across the species groups.
+
+The robust nature of the palmerpenguins data set means it is reasonable to assume that the observations were independent and randomly sampled.
+
+Therefore it is appropriate to carry out an ANCOVA.
+
+## Results
+
+We can then produce a results figure (trend lines) that visualize the relationship analysed by ANCOVA. This figure should then be saved to the Figures file.
+
+```{r}
+
+# produce a results scatter plot with trend lines:
+ggplot(penguins_clean, aes(culmen_length_mm, culmen_depth_mm, color=species)) + 
+  geom_point(size=2) +
+  geom_smooth(method = "lm", se = TRUE, linetype = "solid")+
+labs(
+    title = "Relationship between Culmen Length and Culmen Depth",
+    x = "Culmen Length (mm)",  
+    y = "Culmen Depth (mm)"    
+  )
+
+# name this figure:
+my_stats_plot <- ggplot(penguins_clean, aes(culmen_length_mm, culmen_depth_mm, color=species)) + 
+  geom_point(size=2) +
+  geom_smooth(method = "lm", se = TRUE, linetype = "solid")+
+labs(
+    title = "Relationship between Culmen Length and Culmen Depth",
+    x = "Culmen Length (mm)",  
+    y = "Culmen Depth (mm)"    
+  )
+
+#save this figure:
+ggsave(here("Figures","my_stats_plot.pdf"), plot = my_stats_plot, width = 8, height = 6)
+
+
+```
+
+### Figure 4: results figure of relationship between culmen length and culmen depth including trend lines
+
+The results figure highlights that there are three separate groups within the data set corresponding to species (indicated by the color). Generally the Gentoo species has a greater culmen length relative to culmen depth while the Adelie species by comparison has a greater culmen depth and smaller culmen length. This highlights the importance of the categorical factor excluded in figure 1. The same positive trend can be seen within these species groups, as culmen length increases so does culmen depth. The trend lines are approximately parallel.
+
+ANCOVA is an appropriate model for this data set. As seen from figure 3, the residuals are approximately normally distributed. Furthermore the large and balanced sample size means that deviations from normality will not significantly affect the test. Levene's test shows that the variances between groups are equal and we would expect data observations to be independent and randomly sampled. Relationships between continuous variables are also linear.
+
+ANCOVA is also a necessary model for this data set to determine statistical significance for the trends described above. This model may effectively consider 2 continuous variables and a categorical variable, in which culmen length is treated as a covariate, culmen depth is treated as the dependent variable and species treated as the factors. The results for this test can be seen in table 1.
+
+We can produce a table to summarise the results of the ANCOVA analysis:
+
+```{r}
+# produce an ANCOVA table:
+summary(ancova_interaction_model)
+```
+
+### Table 1: ANCOVA table showing the relationship between variables including an interaction term
+
+Firstly, the p value for species is smaller than 0.05 and therefore the effect of species (group) on culmen depth is significant. This means we can reject null hypothesis 1 in favour of alternative hypothesis 1. Thus, there is a significant effect of group. Essentially the mean culmen depth differs significantly. This provides statistical significance for the visual separation of species on the graph.
+
+Secondly, the p value for culmen length is also smaller than 0.05 and therefore the effect of culmen length (covariate) on culmen depth is significant. This means we can also reject null hypothesis 2 in favor of alternative hypothesis 2. There is therefore a significant effect of a the covariate on the dependent variable. This can be visualized as the positive trend in figure 4 shown within each of the species groups (trend lines).
+
+Finally, the p value for interaction (between culmen length covariate and species group) is greater than 0.05 and therefore not significant. This means we cannot reject null hypothesis 3. Essentially there is no significant interaction between culmen length and species. This statistically describes the parallel trend lines figure 4 and the lack of line intersection. Essentially the effect of culmen length on culmen density does not interact with the species of penguin.
+
+## Discussion
+
+There is an effect of species on culmen depth causing there to be 3 distinct 'groups' within the data, and therefore causing the Simpson's Paradox discussed previously. Each species occupies a range of culmen length to culmen depth ratios, or rather phenotypic space, which may be explained by niche separation. This clustering effect of species suggests that these dimensions may be favorable for the fitness of the respective species most likely relating to food type. Potentially the dimensions of their bill may enable them to access specific food, and thus the different clustered bill dimensions may reduce interspecific competition. Species based clustering of bill dimensions may relate to another fitness impacting factor, such as sexual selection instead.
+
+There is a significant effect of culmen length on culmen depth, however this was not shown to have a significant interaction effect with respect to species. Therefore the the effect of culmen length on culmen depth is consistent between the species. Figure 4 suggests that there is a positive relationship between the variables. One potential explanation for this is that there is physical limitations on the dimensions of bills. For example a large culmen depth may not be physically compatible with a very small culmen length (short and thick). It might be that this is biologically incompatible also (i.e not under selection). While the species differ in their exact bill ratios, this limitation appears to be consistent between species.
+
+This highlights the importance of considering Simpson's paradox and thus potential alternative variables. The misleading graph, shown in figure 1, that excluded the categorical species variable would have lead to misleading biological interpretation also.
+
+## Conclusion
+
+In conclusion, the consideration of potential other variables is vital to ensure true variable relationships are revealed within analysis as highlighted in Simpson's paradox. The inclusion of species within this analysis reversed the initial relationship between culmen depth and length. The ANCOVA highlighted a significant effect of sex as well as culmen length on culmen depth with no interaction. Thus different species of penguins have different bill dimension ratios, however all species are limited by physical viability and biological use. Thus within the phenotypic space occupied by each species there is the same effect of culmen length on culmen depth. This creates an axis of viability for each species within their respective niche.
+
+------------------------------------------------------------------------
+
+## QUESTION 3: Open Science
+
+### a) GitHub
+
+*Upload your RProject you created for **Question 2** and any files and subfolders used to GitHub. Do not include any identifiers such as your name. Make sure your GitHub repo is public.*
+
+*GitHub link:* <https://github.com/SpiderStats/ReproducibleFiguresAssignment>
+
+repo:SpiderStats/ReproducibleFiguresAssignment
+
+GitHub name = SpiderStats
+
+*You will be marked on your repo organisation and readability.*
+
+### b) Share your repo with a partner, download, and try to run their data pipeline.
+
+*Partner's GitHub link:*
+
+<https://github.com/stats-pro/Reproducible-Research-and-Figures>
+
+repo:stats-pro/Reproducible-Research-and-Figures
+
+Github partner = stats-pro
+
+### c) Reflect on your experience running their code. 
+
+Their code ran successfully with no errors, and was generally concise and clear. There was no need to fix any of their code. They provided clear structure and process for their analysis and this was guided by concise captions enabling understanding of the function of each respective chunk. The clear structure and guidance allowed me to run the right pieces of code in a coherent order. In particular they effectively defined the functions and their respective use. This was an effective addition that emphasized the context for each function and how it would be used for the cleaning process. This would ensure that this code was clear to those unfamiliar with data cleaning.
+
+It would be relatively easy to make alterations to their code since they are transparent with the functions they have used as well as both the raw and cleaned data sets. For example by saving these data files as a csv copy this provides a clear record of alterations made to the data relative to the original raw data set that can easily be referred to. While it would have been more concise to provide a link to the 'functions' data file, by providing them directly and explaining the respective roles there is greater transparency around the functions they have used and this potentially improves reproducibility. For example it would be easy to alter one of these functions to produce a new or enhanced cleaning function.
+
+Potentially to improve how reproducible and understandable the code is, greater explanations could have been included within the code captions specifying not just what the code aimed to do by why that might be important. This means that any alterations that were made to the code would be better informed. For example if someone wanted to clean the data differently, providing more information on the reasoning behind each cleaning function would ensure that they were better informed as to if and how they should alter the function. Potentially, the graphical functions could have included more aesthetic features within the function. This would enable alterations to the graphical visualization without searching code. This could be important if the graphics were unsuitable for some readers (color blindness etc). While the structure was largely coherent some small alterations could be made to improve clarity in steps. For example loading and saving the raw data in the methods rather than at the top of the document would ensure that this vital step is not missed. Furthermore, carrying out tests on the assumptions for the ANCOVA before carrying out the ANCOVA would be more logical.
+
+Overall their code was functional and could be easily run. All steps were carried out to ensure reproducibility, with only minor alterations suggested that are generally subjective.
+
+### d) Reflect on your own code based on your experience with your partner's code and their review of yours. 
+
+They experienced some problems loading the car package that caused problems running the Levene's test. I think this is likely a problem relating to their software or packages since this is a reputable package that worked on multiple of my projects. However, it would be interesting to be better understand to the root cause of this problem. They suggested that some of my longer chunks of code could be broken up into smaller chunks. I agree with them that this may enable required modifications to be better identified if the code needed to be edited. They have also suggested that I test more of the assumptions relating to the ANOVA test. While I think this is important the assumptions I have emphasized are perhaps the most important and most likely to be violated by the data set in question. However including other assumptions would provide a more comprehensive scientific process. Finally they have also suggested that my results figure should more directly refer to the ANCOVA which I similarly would improve the clarity of why the test was used and what the results relate to directly.
+
+I have learnt the importance of comprehensive and clear steps within code. For example the importance of saving data set copies and clear code captions. While I thought that my code was generally thorough, where my methods were not as complete (for example not the full tests of statistical assumptions) this was identified by my partner reading the code. Similarly, where code can be broken into more manageable chunks that are easier to isolate, run and potentially modify, the clarity and reproducibility will only improve. This highlights that methods can not be too clear and that comprehensive (while concise) methods and explanations provide necessary context to code. This context is then essential for others to understand, use and alter the code making it reproducible irrespective of the coders experience.
